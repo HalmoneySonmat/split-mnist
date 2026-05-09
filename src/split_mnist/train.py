@@ -1,8 +1,10 @@
 """Joint training loop for all SPLIT-MNIST variants.
 
-Single entry point `train_one_run(cfg)` handles 6 variants (B2 deferred to Day 5):
+Single entry point `train_one_run(cfg)` handles 7 variants:
 
     B1  — SingleCNN on the full 28x28 image            (upper-bound reference)
+    B2a — Two HalfCNN + IndependentClassifiers         (independent baseline)
+          B2b is the same trained model evaluated with `evaluate_left_only`.
     B3  — Two HalfCNN + Classifier (raw concat)        (multimodal baseline)
     B4  — + CrossAttnAdapter trained jointly           (post-hoc adapter)
     V1  — + ACCv1Hebbian (Hebbian only, no backprop)
@@ -34,10 +36,10 @@ from .acc import (
 )
 from .data import make_loaders
 from .losses import classification_loss
-from .networks import Classifier, HalfCNN, SingleCNN
+from .networks import Classifier, HalfCNN, IndependentClassifiers, SingleCNN
 
 
-VALID_VARIANTS = ("B1", "B3", "B4", "V1", "V2", "V3")
+VALID_VARIANTS = ("B1", "B2a", "B3", "B4", "V1", "V2", "V3")
 ACC_VARIANTS = ("V1", "V2", "V3")
 RECON_VARIANTS = ("V2", "V3")
 HEBBIAN_VARIANTS = ("V1", "V3")
@@ -122,6 +124,7 @@ def build_model(cfg: TrainConfig) -> dict:
     Returns a dict whose keys depend on variant:
 
         B1       -> {"single_cnn": SingleCNN}
+        B2a      -> {"left", "right", "classifier": IndependentClassifiers}
         B3       -> {"left", "right", "classifier"}
         B4       -> {"left", "right", "classifier", "adapter": CrossAttnAdapter}
         V1/V2/V3 -> {"left", "right", "classifier", "acc": ACC*}
@@ -133,14 +136,23 @@ def build_model(cfg: TrainConfig) -> dict:
             )
         }
 
-    # All non-B1 variants share the bilateral backbone + classifier.
+    # All non-B1 variants share the bilateral backbone.
     components: dict = {
         "left": HalfCNN(hidden_dim=cfg.hidden_dim),
         "right": HalfCNN(hidden_dim=cfg.hidden_dim),
-        "classifier": Classifier(
-            hidden_dim=cfg.hidden_dim, n_classes=cfg.n_classes
-        ),
     }
+
+    if cfg.variant == "B2a":
+        # Independent classifiers, one per hemisphere.
+        components["classifier"] = IndependentClassifiers(
+            hidden_dim=cfg.hidden_dim, n_classes=cfg.n_classes
+        )
+        return components
+
+    # All other variants share the same Classifier (concat-based).
+    components["classifier"] = Classifier(
+        hidden_dim=cfg.hidden_dim, n_classes=cfg.n_classes
+    )
 
     if cfg.variant == "B3":
         return components
@@ -207,6 +219,10 @@ def _forward_logits(
 ) -> tuple[Tensor, Tensor | None, Tensor | None]:
     """Compute logits for the given variant.
 
+    For B2a, returns the *logit average* (logits_L + logits_R) / 2 as the
+    "primary" eval mode. The two raw logits and the left-only mode are
+    accessed via dedicated helpers in this module.
+
     Returns:
         (logits, h_L, h_R)
         - logits: (B, n_classes)
@@ -219,6 +235,11 @@ def _forward_logits(
 
     h_L = model["left"](x_L)   # (B, D)
     h_R = model["right"](x_R)  # (B, D)
+
+    if cfg.variant == "B2a":
+        # Primary "average" mode: logit average of the two independent classifiers.
+        logits = model["classifier"].avg_logits(h_L, h_R)
+        return logits, h_L, h_R
 
     if cfg.variant == "B4":
         # Adapter is in the main path; classifier sees the modified hiddens.
@@ -248,13 +269,25 @@ def _step(
 
     The variant-specific behavior:
       - B1, B3      : classification loss only.
+      - B2a         : classification loss = (CE(L,y) + CE(R,y)) / 2.
+                      Each classifier head trains on its own hemisphere only.
       - B4          : classification loss; adapter.W gets grads through it.
       - V1          : classification loss; Hebbian update on detached hiddens.
       - V2          : classification + β·reconstruction (ACC, detached hiddens).
       - V3          : classification + β·reconstruction + Hebbian.
     """
-    logits, h_L, h_R = _forward_logits(model, x_L, x_R, cfg)
-    loss_cls = classification_loss(logits, y)
+    if cfg.variant == "B2a":
+        # B2a: independent classifiers — train each head on its own loss.
+        h_L = model["left"](x_L)
+        h_R = model["right"](x_R)
+        logits_L, logits_R = model["classifier"](h_L, h_R)
+        loss_cls = (
+            classification_loss(logits_L, y)
+            + classification_loss(logits_R, y)
+        ) / 2
+    else:
+        logits, h_L, h_R = _forward_logits(model, x_L, x_R, cfg)
+        loss_cls = classification_loss(logits, y)
 
     metrics: dict[str, float] = {"loss_cls": loss_cls.item()}
 
@@ -299,8 +332,23 @@ def _evaluate(
     loader: DataLoader,
     cfg: TrainConfig,
     device: torch.device,
+    eval_mode: str = "primary",
 ) -> float:
-    """Compute classification accuracy on `loader`."""
+    """Compute classification accuracy on `loader`.
+
+    Args:
+        eval_mode: "primary" uses the variant's main forward path
+                   (logit-average for B2a, raw concat for V*/B3, etc.).
+                   "left_only" only valid for B2a — uses left classifier
+                   head only, ignoring h_R. This implements B2(b) on top
+                   of a B2(a)-trained model.
+    """
+    if eval_mode == "left_only" and cfg.variant != "B2a":
+        raise ValueError(
+            f"eval_mode='left_only' is only valid for variant='B2a', "
+            f"got variant={cfg.variant!r}"
+        )
+
     _set_eval(model)
     correct = 0
     total = 0
@@ -309,11 +357,46 @@ def _evaluate(
         x_R = x_R.to(device, non_blocking=True)
         y = y.to(device, non_blocking=True)
 
-        logits, _, _ = _forward_logits(model, x_L, x_R, cfg)
-        preds = logits.argmax(dim=-1)
+        if eval_mode == "left_only":
+            # B2(b) eval mode: use only the left classifier on left CNN output.
+            h_L = model["left"](x_L)
+            logits_L, _ = model["classifier"](h_L, h_L)  # right input ignored
+            preds = logits_L.argmax(dim=-1)
+        else:
+            logits, _, _ = _forward_logits(model, x_L, x_R, cfg)
+            preds = logits.argmax(dim=-1)
+
         correct += (preds == y).sum().item()
         total += y.size(0)
     return correct / max(total, 1)
+
+
+def evaluate_left_only(
+    model: dict,
+    loader: DataLoader,
+    device: torch.device | str = "cpu",
+) -> float:
+    """Public helper: evaluate a B2a-trained model in left-only mode (= B2b).
+
+    PLAN §6.1 footnote: B2(b) is derived from B2(a) by changing only the
+    eval mode. This avoids retraining a separate model for B2(b).
+
+    Args:
+        model: a B2a model dict from `build_model(TrainConfig(variant='B2a'))`,
+               typically already trained.
+        loader: DataLoader yielding (x_L, x_R, y).
+        device: target device for inference.
+
+    Returns:
+        Accuracy in [0, 1].
+    """
+    if "classifier" not in model or "left" not in model:
+        raise ValueError("model must be a B2a-shape dict with 'left' and 'classifier'")
+    # Use a synthetic cfg just so we can reuse _evaluate's machinery cleanly.
+    cfg = TrainConfig(variant="B2a", device=str(device))
+    return _evaluate(
+        model, loader, cfg, torch.device(device), eval_mode="left_only"
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -335,6 +418,10 @@ def train_one_run(cfg: TrainConfig, _data_loaders: tuple | None = None) -> dict:
             "best_val_acc":   best val accuracy seen
             "best_test_acc":  test accuracy at the best-val epoch
             "final_metrics":  metrics from the last training step
+            "model":          the trained model dict (live tensors).
+                              For B2a, can be passed to `evaluate_left_only`
+                              to obtain B2(b) accuracy without retraining.
+            "variant":        the cfg.variant string, for downstream use.
     """
     set_seed(cfg.seed)
     device = _device_of(cfg)
@@ -417,4 +504,6 @@ def train_one_run(cfg: TrainConfig, _data_loaders: tuple | None = None) -> dict:
         "best_val_acc": best_val_acc,
         "best_test_acc": best_test_acc,
         "final_metrics": final_metrics,
+        "model": model,
+        "variant": cfg.variant,
     }

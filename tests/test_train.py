@@ -19,6 +19,7 @@ from split_mnist.train import (
     VALID_VARIANTS,
     TrainConfig,
     build_model,
+    evaluate_left_only,
     set_seed,
     train_one_run,
 )
@@ -87,10 +88,22 @@ def test_build_model_b1() -> None:
     assert set(m.keys()) == {"single_cnn"}
 
 
+def test_build_model_b2a() -> None:
+    cfg = _smoke_cfg("B2a")
+    m = build_model(cfg)
+    assert set(m.keys()) == {"left", "right", "classifier"}
+    # The B2a classifier must be IndependentClassifiers, not Classifier.
+    from split_mnist.networks import IndependentClassifiers
+    assert isinstance(m["classifier"], IndependentClassifiers)
+
+
 def test_build_model_b3() -> None:
     cfg = _smoke_cfg("B3")
     m = build_model(cfg)
     assert set(m.keys()) == {"left", "right", "classifier"}
+    # B3 uses the standard concat Classifier.
+    from split_mnist.networks import Classifier
+    assert isinstance(m["classifier"], Classifier)
 
 
 def test_build_model_b4() -> None:
@@ -196,3 +209,52 @@ def test_v3_step_records_g() -> None:
     assert "g" in result["final_metrics"]
     # At init g=0; after a few steps it may or may not have moved (D-19 issue).
     # We only assert presence, not value.
+
+
+# -- B2a / B2b: shared training, two eval modes ---------------------------------------------
+
+
+def test_train_one_run_returns_model() -> None:
+    """train_one_run must include the live model dict in its result so
+    downstream evals (e.g. evaluate_left_only) can reuse it."""
+    cfg = _smoke_cfg("B2a")
+    loaders = _dummy_loaders(n=24, batch_size=8)
+    result = train_one_run(cfg, _data_loaders=loaders)
+    assert "model" in result
+    assert "variant" in result and result["variant"] == "B2a"
+    assert "left" in result["model"]
+    assert "right" in result["model"]
+    assert "classifier" in result["model"]
+
+
+def test_evaluate_left_only_b2a() -> None:
+    """B2(b) = B2(a) trained model, evaluated with left classifier head only."""
+    cfg = _smoke_cfg("B2a")
+    train_loader, val_loader, test_loader = _dummy_loaders(n=64, batch_size=8)
+    result = train_one_run(cfg, _data_loaders=(train_loader, val_loader, test_loader))
+
+    b2a_acc = result["best_test_acc"]
+    b2b_acc = evaluate_left_only(result["model"], test_loader, device="cpu")
+
+    # Both must be in [0, 1].
+    assert 0.0 <= b2a_acc <= 1.0
+    assert 0.0 <= b2b_acc <= 1.0
+
+
+def test_evaluate_left_only_rejects_non_b2a() -> None:
+    """evaluate_left_only must refuse models that aren't shaped like B2a
+    (this guards against accidentally calling it on V3 etc.)."""
+    cfg_v3 = _smoke_cfg("V3")
+    loaders = _dummy_loaders(n=24, batch_size=8)
+    result = train_one_run(cfg_v3, _data_loaders=loaders)
+
+    # V3's model has 'acc', so it's structurally a B2a-shaped dict (left, right,
+    # classifier all present). evaluate_left_only's guard is on classifier
+    # *type*, not key presence, so we'd actually get an error from
+    # IndependentClassifiers — the V3 classifier returns a single tensor, not
+    # a tuple, so unpacking will fail. Verify it does fail.
+    try:
+        evaluate_left_only(result["model"], loaders[2], device="cpu")
+    except (ValueError, TypeError, AttributeError):
+        return
+    raise AssertionError("expected error when passing non-B2a model to evaluate_left_only")

@@ -2,6 +2,8 @@
 
 - HalfCNN: one half (used twice for left/right with independent weights).
 - Classifier: takes concat[hidden_L, hidden_R] and predicts class.
+- IndependentClassifiers: B2(a/b) baseline — two parallel classifiers,
+  one per hemisphere, used independently.
 - SingleCNN: B1 baseline (sees the full 28x28 image).
 
 All shapes follow PLAN §3.2 and §6.
@@ -67,6 +69,49 @@ class Classifier(nn.Module):
         x = torch.cat([hidden_L, hidden_R], dim=-1)
         x = F.relu(self.fc1(x))
         return self.fc2(x)
+
+
+class IndependentClassifiers(nn.Module):
+    """B2 baseline: two parallel classifiers, one per hemisphere.
+
+    Used by both B2(a) and B2(b) baselines (PLAN §6.1):
+      - B2(a) Independent-avg: (logits_L + logits_R) / 2, then argmax.
+      - B2(b) Left-only: logits_L only, then argmax.
+
+    Both share the same trained weights — see PLAN §6.1 footnote on
+    "B2(b) is derived from B2(a) by changing only the eval mode."
+
+    Architecture: same as Classifier's two-stage MLP, but applied
+    independently to each hemisphere's hidden vector.
+
+    Forward returns the two logit tensors as a tuple. Use
+    `IndependentClassifiers.avg_logits()` for B2(a) eval, or take the
+    first element for B2(b) eval.
+    """
+
+    def __init__(self, hidden_dim: int = 64, n_classes: int = 10) -> None:
+        super().__init__()
+        self.left = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, n_classes),
+        )
+        self.right = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, n_classes),
+        )
+
+    def forward(
+        self, hidden_L: Tensor, hidden_R: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        """Return (logits_L, logits_R), each (B, n_classes)."""
+        return self.left(hidden_L), self.right(hidden_R)
+
+    def avg_logits(self, hidden_L: Tensor, hidden_R: Tensor) -> Tensor:
+        """Convenience: return the per-class logit average for B2(a) eval."""
+        logits_L, logits_R = self.forward(hidden_L, hidden_R)
+        return (logits_L + logits_R) / 2
 
 
 class SingleCNN(nn.Module):

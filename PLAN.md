@@ -545,6 +545,13 @@ PoC에서는 안 하지만 *후속 실험에서 가치 있는* 항목들. 본 Po
 - **D-17 B4 multi-head** (8-head, dim 8 each) — capacity 더 큰 비교군.
 - **D-18 B5 — Frozen pretrained CNN 베이스라인** — SPLIT-9 패턴 직접 재현.
   PoC 후 SPLIT-9 reboot 단계에서 자연스럽게 추가.
+- **D-20 V3 Hebbian-recon 충돌 완화** — Day 5 train_baselines 결과에서
+  V2 recon loss 21, V3 recon loss 14,644 (700배 차이) 발견. W_hebbian이
+  매 step *임의 매핑*에 누적 → W_learned가 보정 따라잡지 못함. 후속:
+  - η_hebbian sweep (0.001 ~ 0.1) — Hebbian update 강도 조정.
+  - β_recon sweep — 이미 §9.1에 sweep 계획 있음. 결과 분석 시 V3 vs V2
+    의 recon loss 비율도 같이 봐야.
+  - W_max sweep — clip 한계 낮추면 W_hebbian 폭주 제한.
 
 ### 16.5 발견된 이슈 (학습 시점 검증 완료)
 

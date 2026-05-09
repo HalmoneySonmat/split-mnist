@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import torch
 
-from split_mnist.networks import Classifier, HalfCNN, SingleCNN
+from split_mnist.networks import (
+    Classifier,
+    HalfCNN,
+    IndependentClassifiers,
+    SingleCNN,
+)
 
 
 def test_half_cnn_shape() -> None:
@@ -86,3 +91,65 @@ def test_single_cnn_default_hidden_unused_in_logits_shape() -> None:
     x = torch.randn(2, 1, 28, 28)
     out = net(x)
     assert out.shape == (2, 10)
+
+
+# -- IndependentClassifiers (B2 baseline) --------------------------------------------------
+
+
+def test_independent_classifiers_shapes() -> None:
+    cls = IndependentClassifiers(hidden_dim=64, n_classes=10)
+    h_L = torch.randn(8, 64)
+    h_R = torch.randn(8, 64)
+    logits_L, logits_R = cls(h_L, h_R)
+    assert logits_L.shape == (8, 10)
+    assert logits_R.shape == (8, 10)
+
+
+def test_independent_classifiers_left_right_truly_independent() -> None:
+    """Modifying h_R must not affect logits_L (and vice versa)."""
+    cls = IndependentClassifiers(hidden_dim=64, n_classes=10).eval()
+    h_L = torch.randn(4, 64)
+    h_R1 = torch.randn(4, 64)
+    h_R2 = torch.randn(4, 64)
+
+    logits_L_a, _ = cls(h_L, h_R1)
+    logits_L_b, _ = cls(h_L, h_R2)
+    # Same h_L, different h_R → logits_L unchanged.
+    assert torch.equal(logits_L_a, logits_L_b)
+
+
+def test_independent_classifiers_avg_logits() -> None:
+    cls = IndependentClassifiers(hidden_dim=64, n_classes=10).eval()
+    h_L = torch.randn(4, 64)
+    h_R = torch.randn(4, 64)
+
+    logits_L, logits_R = cls(h_L, h_R)
+    avg = cls.avg_logits(h_L, h_R)
+    assert avg.shape == (4, 10)
+    assert torch.allclose(avg, (logits_L + logits_R) / 2)
+
+
+def test_independent_classifiers_param_count() -> None:
+    """IndependentClassifiers has roughly 2x the param count of one Classifier
+    (since it has two parallel two-stage MLPs)."""
+    cls = Classifier(hidden_dim=64, n_classes=10)
+    indep = IndependentClassifiers(hidden_dim=64, n_classes=10)
+
+    n_cls = sum(p.numel() for p in cls.parameters())
+    n_indep = sum(p.numel() for p in indep.parameters())
+
+    # IndependentClassifiers has two heads of (64->64)+(64->10) each.
+    # Classifier has one (128->64)+(64->10) head.
+    # The numbers aren't 2x exactly but should be in the same ballpark.
+    # Hard ceiling: < 2.5x to catch architectural regressions.
+    assert n_indep > n_cls
+    assert n_indep < 2.5 * n_cls, f"indep={n_indep}, cls={n_cls}"
+
+
+def test_independent_classifiers_finite_outputs() -> None:
+    cls = IndependentClassifiers(hidden_dim=64, n_classes=10).eval()
+    h_L = torch.randn(2, 64)
+    h_R = torch.randn(2, 64)
+    logits_L, logits_R = cls(h_L, h_R)
+    assert torch.isfinite(logits_L).all()
+    assert torch.isfinite(logits_R).all()
