@@ -410,3 +410,36 @@ def measure_position_invariance(W_list: list[Tensor]) -> dict:
         "procrustes_corr_per_seed": correlations,
         "n_seeds": len(W_list),
     }
+
+
+def measure_random_baseline_invariance(
+    hidden_dim: int = 64,
+    n_seeds: int = 5,
+    base_seed: int = 100,
+) -> dict:
+    """Establish the random-init Procrustes baseline for D-21 calibration.
+
+    Generates n_seeds × isotropic random (D, D) matrices and measures
+    `measure_position_invariance` over them. The resulting r is the
+    *noise floor* — any trained W's r must be distinguishably *below*
+    this baseline (Δ ≥ 0.15) to claim "위치 무관 OK".
+
+    See PLAN §16.5 D-21 for the full rationale.
+
+    Args:
+        hidden_dim: ACC W dimension (default 64).
+        n_seeds:    number of random matrices (default 5, matching the
+                    per-seed count used for the trained measurement).
+        base_seed:  starting seed; matrices use base_seed, base_seed+1, ...
+                    Default 100 to avoid collision with training seeds 42-46.
+
+    Returns:
+        Same shape as `measure_position_invariance`'s output.
+    """
+    W_list = []
+    for i in range(n_seeds):
+        g = torch.Generator().manual_seed(base_seed + i)
+        # Plain N(0, 1) — same isotropy as Day 6's empirical observation.
+        W = torch.randn(hidden_dim, hidden_dim, generator=g)
+        W_list.append(W)
+    return measure_position_invariance(W_list)

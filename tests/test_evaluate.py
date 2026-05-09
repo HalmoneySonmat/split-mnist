@@ -18,6 +18,7 @@ from split_mnist.evaluate import (
     measure_causal_coupling,
     measure_cross_activation,
     measure_position_invariance,
+    measure_random_baseline_invariance,
     measure_task_accuracy,
 )
 from split_mnist.train import TrainConfig, build_model
@@ -262,3 +263,38 @@ def test_measure_position_invariance_returns_correct_shape() -> None:
     assert len(out["procrustes_corr_per_seed"]) == 2
     for r in out["procrustes_corr_per_seed"]:
         assert -1.0 <= r <= 1.0
+
+
+# -- D-21 random baseline -------------------------------------------------------------------
+
+
+def test_measure_random_baseline_invariance_default() -> None:
+    """Default: 64-dim, 5 seeds → known empirical r ≈ 0.74 (D-21)."""
+    out = measure_random_baseline_invariance()
+    assert out["n_seeds"] == 5
+    assert 0.6 < out["procrustes_corr_mean"] < 0.85, out
+
+
+def test_measure_random_baseline_invariance_deterministic() -> None:
+    """Same base_seed → same baseline."""
+    out1 = measure_random_baseline_invariance(base_seed=200)
+    out2 = measure_random_baseline_invariance(base_seed=200)
+    assert (
+        out1["procrustes_corr_mean"]
+        == out2["procrustes_corr_mean"]
+    )
+
+
+def test_measure_random_baseline_invariance_diff_seed_diff_value() -> None:
+    """Different base_seed → can give a slightly different baseline (sanity)."""
+    out1 = measure_random_baseline_invariance(base_seed=100)
+    out2 = measure_random_baseline_invariance(base_seed=900)
+    # They should both still be in the random-baseline regime but not identical.
+    assert out1["procrustes_corr_mean"] != out2["procrustes_corr_mean"]
+
+
+def test_measure_random_baseline_invariance_custom_dim() -> None:
+    """Different hidden_dim should also produce sane output."""
+    out = measure_random_baseline_invariance(hidden_dim=32, n_seeds=3, base_seed=500)
+    assert out["n_seeds"] == 3
+    assert -1.0 <= out["procrustes_corr_mean"] <= 1.0

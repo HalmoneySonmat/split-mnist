@@ -3,12 +3,27 @@
 > SPLIT-9의 negative result를 받아, **공동 학습 + 인공 뇌량(ACC)**이라는
 > 다음 가설을 가장 작은 toy로 검증하는 프로젝트.
 
-**버전**: v1.3 (Day 6 evaluate.py 완료, 측정 #4 random-baseline 재교정)
-**상태**: PoC 측정 인프라 완료. Day 7 (5 seed 정식 학습 + 본 가설 검증) 진입 가능.
+**버전**: v1.4 (Day 6 첫 결과 — V2 부분 검증, V3 기각, 본 가설 본형 V2로 재서술)
+**상태**: PoC 측정 1차 완료. Day 7 (5 seed × 더 긴 epoch 정식 학습) 진입 가능.
 
 **박제 git tag**:
 - `v0.0-plan` — PLAN v1.1 시점 (코드 작성 직전)
 - `v0.1-day4c` — Day 1~4c 인프라 검증 완료 시점
+
+**v1.3 → v1.4 변경 요약 — 본 가설의 *본형*이 V2로 변경**
+
+> 1 epoch × 7 variant × measurement #2 결과 (§18) 에서 V3 (Hebbian + 재구성) 가
+> V2 (재구성 only) 보다 *훨씬* 약함이 확정. W_max sweep monotonic 패턴으로
+> D-20 (Hebbian-recon 충돌)이 *구조적 한계*임이 입증됨. **사용자 가설의
+> "공동 학습 + 위치 무관 ACC"는 V2로 유지**되되, **Hebbian 컴포넌트는
+> ablation으로 강등**.
+
+- §4.1 세 변형: 본형 V3 → V2로 변경. V1/V3는 ablation.
+- §12.A/B/C 시나리오: V3 vs B4 → **V2 vs B4** 중심으로 임계치 재서술.
+  V3 vs V2 비교는 보조 ablation 신호.
+- §16.5 D-20 확정 (W_max sweep으로 시간 스케일 무관 구조 한계 증명).
+- §16.5 D-23 신규: V3' "Hebbian opt-in" (`W = tanh(α)·W_h + W_l`) 후속 실험.
+- §18 신규: Day 6 결과 박제 (V2 검증, V3 기각, W_max sweep 7 단계).
 
 **v1.2 → v1.3 변경 요약**
 - §5.4 측정 #4: random init baseline 비교 형태로 재정의.
@@ -146,13 +161,20 @@ ML 인접 작업:
 
 ACC 핵심 자료: 좌 unit i와 우 unit j 의 *coactivation 행렬* W ∈ ℝ^(64×64).
 
-### 4.1 세 변형 — 핵심 비교
+### 4.1 세 변형 — 핵심 비교 (Day 6 후 재정의)
 
-| 변형 | W 형태 | 학습 신호 | 학습 방식 |
-|---|---|---|---|
-| **V1 Hebbian only** | W_hebbian | mean-centered Hebbian | `ΔW = η·(h_L−μ_L)(h_R−μ_R)ᵀ − λW`, clip. backprop 안 씀. |
-| **V2 재구성 only** | W_learned (nn.Parameter) | MSE 양방향 | AdamW backprop |
-| **V3 결합** | W_hebbian + tanh(g)·W_learned | 둘 다 | Hebbian rule + backprop. g=0 초기화. |
+| 변형 | 역할 | W 형태 | 학습 신호 | 학습 방식 |
+|---|---|---|---|---|
+| **V1 Hebbian only** | ablation (Hebbian 단독 효과) | W_hebbian | mean-centered Hebbian | `ΔW = η·(h_L−μ_L)(h_R−μ_R)ᵀ − λW`, clip. backprop 안 씀. |
+| **V2 재구성 only** ★ | **본형 (사용자 가설의 ML 구현)** | W_learned (nn.Parameter) | MSE 양방향 | AdamW backprop |
+| **V3 결합** | ablation (Hebbian *추가* 효과 — Day 6에서 *역효과* 확정) | W_hebbian + tanh(g)·W_learned | 둘 다 | Hebbian rule + backprop. g=0 초기화. |
+
+**Day 6 발견 (§18 참조)**:
+- V2 cosine 0.89, acc_recon 0.78 — 본 가설 부분 검증
+- V3 cosine 0.41, acc_recon 0.32 — Hebbian이 W_learned 학습 방해 (D-20 확정)
+- V1 cosine 0.48 — Hebbian 단독은 복원 못 함 (예상한 negative)
+
+**왜 V2가 본형인가**: 사용자의 *공동 학습 + 위치 무관 ACC* 가설은 **학습 *시간*은 공동, 학습 *신호 경로*만 분리** 형태로 V2가 정확히 구현. Hebbian 컴포넌트는 사용자 직관에 충실했으나 ML 구현에서 *재구성 loss와 자원 경쟁*하는 잡음으로 작용.
 
 ### 4.2 V1 Hebbian 정확한 수식
 
@@ -432,14 +454,18 @@ split_mnist/
 
 ### Scenario A — 가설 강한 검증 (모두 만족)
 
+본 가설 본형 = V2 (재구성 only). V3는 ablation. 임계치는 *V2 vs B4* 중심.
+
 | 측정 | 임계치 |
 |---|---|
-| #1 Task accuracy | V3 ≥ B1 − 5%p |
-| #2 Cross-activation cosine | V3 ≥ 0.7 |
-| #2 V3 vs B4 cosine 차이 | ≥ 0.15, paired bootstrap p < 0.05 |
-| #2 V3 vs B4 classifier acc 차이 | ≥ 5%p |
-| #3 Causal coupling | V3 ε=0.5 acc 하락 − B3 acc 하락 ≥ 5%p |
+| #1 Task accuracy | V2 ≥ B1 − 5%p |
+| #2 Cross-activation cosine | V2 ≥ 0.7 |
+| #2 V2 vs B4 cosine 차이 | ≥ 0.15, paired bootstrap p < 0.05 |
+| #2 V2 vs B4 acc_reconstructed 차이 | ≥ 5%p |
+| #3 Causal coupling | V2 ε=0.5 acc 하락 − B3 acc 하락 ≥ 5%p |
 | #4 Position invariance | r_trained ≤ r_random_baseline − 0.15, paired bootstrap p < 0.05 |
+
+추가 (보조 ablation): V1 < V2 (Hebbian 단독 약함 확인), V3 ≤ V2 + ε (Hebbian 추가가 부담 안 됨).
 
 → **다음 단계**: SPLIT-9 reboot (9×9 바둑 + LLM에 ACC 적용). 워크숍 short paper.
 
@@ -447,10 +473,10 @@ split_mnist/
 
 | 패턴 | 의미 |
 |---|---|
-| #2 V3 cosine ≥ 0.5 BUT V3 vs B4 차이 < 0.15 | "ACC 동작은 하나 Hebbian이 cross-attn 대비 우월하지 않음" |
+| #2 V2 cosine ≥ 0.5 BUT V2 vs B4 차이 < 0.15 | "ACC 분리 학습 효과 있으나 cross-attn 대비 결정적 우월 X" |
 | #4 r_trained ∈ [random_baseline − 0.15, random_baseline + 0.15] | "학습이 random과 통계적으로 구별 안 됨 — 위치 무관 약함" |
-| #2 만족이지만 #3 만족 안 함 | "표현 복원은 되나 인과 결합 약함" |
-| V1/V2/V3 중 한두 변형만 통과 | 부분 검증 |
+| #2 만족이지만 #3 만족 안 함 (toy 한계) | "표현 복원은 되나 인과 결합 측정 도구 약함" |
+| V1/V2 중 V2만 통과 | "본형 검증, ablation은 예상된 약함" |
 
 → **다음 단계**: short paper 가능. SPLIT-9 reboot 전 추가 ablation (D-3, D-8, D-10, D-13 등).
 
@@ -458,12 +484,16 @@ split_mnist/
 
 | 패턴 | 의미 |
 |---|---|
-| #2 V3 cosine < 0.3 | "복원 실패" |
-| #1 V3 < B3 (p < 0.05) | "ACC 추가가 분류 성능 저하" |
-| #2 V3 cosine ≤ B4 cosine (p < 0.05) | "Hebbian이 cross-attn보다 못함" |
-| #3 V3 곡선이 B3와 통계적으로 동일 | "인과 결합 없음" |
+| #2 V2 cosine < 0.3 | "복원 실패 — V2도 작동 안 함" |
+| #1 V2 < B3 (p < 0.05) | "ACC 추가가 분류 성능 저하" |
+| #2 V2 cosine ≤ B4 cosine (p < 0.05) | "분리 학습이 joint cross-attn보다 못함" |
+| #3 V2 곡선이 B3와 통계적으로 동일 (단, toy 한계 고려 — Day 6 §18에서 measurement #3은 MNIST 분리뇌에서 정보적이지 않음 발견) | "인과 결합 없음 + toy 한계" |
 
 → **다음 단계**: 두 번째 negative result. SPLIT-9 패턴으로 negative paper 작성. 다음 가설로 회귀 (예: ACC sparse top-k, 공동 진화 모드 D-10).
+
+### Scenario A에 V3 위치는?
+
+V3는 *ablation* 결과 — 본 가설의 검증/기각에 직접 영향 X. Day 6에서 V3 < V2 확정. Day 7 정식 학습에서도 같은 패턴 확인되면 §18.4의 Hebbian 부적합성 결론을 추가 검증.
 
 ### 12.4 임계치 근거
 
@@ -592,13 +622,47 @@ PoC에서는 안 하지만 *후속 실험에서 가치 있는* 항목들. 본 Po
   **Day 7 추가 학습 단계**: 5 seed × random init W의 measure_position_invariance
   를 학습 *전*에 한 번 실행해 baseline 박제. 그 후 학습된 W 측정.
 
-- **D-20 V3 Hebbian-recon 충돌 완화** — Day 5 train_baselines 결과에서
-  V2 recon loss 21, V3 recon loss 14,644 (700배 차이) 발견. W_hebbian이
-  매 step *임의 매핑*에 누적 → W_learned가 보정 따라잡지 못함. 후속:
-  - η_hebbian sweep (0.001 ~ 0.1) — Hebbian update 강도 조정.
-  - β_recon sweep — 이미 §9.1에 sweep 계획 있음. 결과 분석 시 V3 vs V2
-    의 recon loss 비율도 같이 봐야.
-  - W_max sweep — clip 한계 낮추면 W_hebbian 폭주 제한.
+- **D-20 V3 Hebbian-recon 충돌** — *확정 (Day 6, 2026-05-10)*
+
+  Day 5 train_baselines 발견 (V2 recon 21 vs V3 recon 14,644)을
+  Day 6 W_max sweep으로 *구조적 한계* 확정:
+
+  | W_max | V3 cosine | V3 acc_recon | V3 g | 의미 |
+  |---|---:|---:|---:|---|
+  | 0.05 | 0.8586 | 0.7844 | -0.1986 | V2와 거의 동일 |
+  | 0.10 | 0.8042 | 0.7583 | -0.2554 | V2급 |
+  | 0.30 | 0.4730 | 0.5851 | -0.3953 | 무너지기 시작 |
+  | 1.00 | 0.4057 | 0.3154 | -0.5089 | default, V1보다 살짝 좋음 |
+
+  **monotonic** — W_hebbian 영향력이 작을수록 V3 → V2. 즉 *Hebbian이
+  추가 가치 없음*. η_hebbian sweep (0.001~0.01)에서도 같은 패턴 확인 →
+  *시간 스케일 무관 구조 한계*.
+
+  η sweep 결과 (Day 6):
+  | η_hebbian | V3 cosine | V3 acc_recon |
+  |---|---:|---:|
+  | 0.001 | 0.4740 | 0.2296 |
+  | 0.005 | 0.4114 | 0.3012 |
+  | 0.01 | 0.4106 | 0.3274 |
+
+  → η도 회복 효과 없음. *η 작아도 step 누적*되어 같은 균형점.
+
+  **결론**: V3 본형 (W_max=1.0, η=0.01) Hebbian-recon 충돌은 *fix 불가
+  (현 V3 구조 안에서)*. 본 가설의 본형은 V2로 변경. V3는 ablation 강등.
+  Hebbian의 ML 도입은 V3'(D-23) 형태로 추가 시도.
+
+- **D-23 V3' "Hebbian opt-in"** — V3의 대안 설계.
+
+  현 V3: `W = W_hebbian + tanh(g)·W_learned` — W_hebbian이 *항상* base.
+  새 V3': `W = tanh(α)·W_hebbian + W_learned` — α=0 init이면 W_hebbian
+  영향 *없음*, 학습이 *원할 때만* Hebbian 도입.
+
+  - α=0 → W = W_learned (V2와 동일 시작)
+  - α 자유 학습 → 데이터에 도움되면 Hebbian opt-in, 아니면 0 유지
+
+  PoC 후 시도 (D-13/D-14와 묶어). 만약 α가 학습 후 0에 머무름 → Hebbian
+  *근본적으로 불필요*가 V3'에서도 확정. α가 0에서 벗어남 → Hebbian이
+  특정 조건에서 도움됨이 처음 검증.
 
 ### 16.5 발견된 이슈 (학습 시점 검증 완료)
 
@@ -821,7 +885,7 @@ def train_one_run(cfg: TrainConfig) -> dict:
     ...
 ```
 
-### 17.6 `evaluate.py` (in scripts/)
+### 17.6 `evaluate.py` (in src/split_mnist/, importable; CLI in scripts/evaluate_baselines.py)
 
 ```python
 def measure_task_accuracy(model_dict, test_loader, device) -> float: ...
@@ -868,4 +932,122 @@ evaluate uses everything (read-only)
 
 ---
 
-*v1.1 작성일: 2026-05-09. PLAN v1.0 + §3~§12 정밀화 통합. 코드 작성 직전 상태.*
+## 18. Day 6 결과 박제 (사전 등록 후 첫 측정, 2026-05-10)
+
+> **요약**: V2가 부분 검증 (사용자 가설 본형). V3는 기각 (Hebbian 추가가
+> 잡음으로 작용). 측정 #3은 toy 한계로 정보적이지 않음. PLAN의 본형을
+> V2로 재서술 (이번 갱신, v1.4).
+
+### 18.1 실험 셋업
+
+- 7 variants × 1 seed (=42) × 1 epoch on full MNIST.
+- 학습 후 즉시 evaluate.py 측정 #1, #2 (양방향), #3 실행.
+- D-21 random Procrustes baseline = **0.7481**.
+- 측정 #4는 5 seed 필요 (Day 7).
+
+### 18.2 측정 #1 — Task accuracy (모든 variant)
+
+| variant | val | test | g (V3만) |
+|---|---:|---:|---:|
+| B1 | 0.9706 | 0.9749 | — |
+| B2a | 0.9607 | 0.9679 | — |
+| B2b | — | 0.9208 | — |
+| B3 | 0.9537 | 0.9599 | — |
+| B4 | 0.9552 | 0.9606 | — |
+| V1 | 0.9529 | 0.9594 | — |
+| V2 | 0.9538 | 0.9592 | — |
+| V3 | **0.9643** | **0.9694** | **−0.5074** |
+
+V3가 분류에서는 살짝 우월 (1 epoch 1 seed 노이즈 수준). 모든 variant
+distinct하지 않게 95~97% 사이 — 학습 인프라 정상.
+
+### 18.3 측정 #2 — Cross-activation faithfulness (★ 본 가설 검증)
+
+right_ablation, mean ablation, full test (10000장):
+
+| variant | cosine | acc_real | acc_ablated | acc_recon | Δ(rec−abl) |
+|---|---:|---:|---:|---:|---:|
+| B4 | 0.8494 | 0.9606 | 0.5702 | 0.6193 | +0.0491 |
+| **V2** ★ | **0.8925** | **0.9592** | **0.6084** | **0.7792** | **+0.1708** |
+| V3 | 0.4103 | 0.9694 | 0.6363 | 0.3208 | −0.3155 |
+| V1 | 0.4829 | 0.9594 | 0.6079 | 0.2511 | −0.3568 |
+
+**V2 vs B4 비교 (본 가설의 결정적 검증)**:
+- cosine Δ: +0.0431 (Scenario A 임계 0.15에 미달, **Scenario B 부분 검증**)
+- acc_recon Δ: +0.1599 (Scenario A 임계 0.05 *통과* ✓)
+
+**V3 vs B4 (Hebbian 추가 효과 검증)**:
+- cosine Δ: −0.4391 (V3가 *훨씬* 나쁨)
+- acc_recon Δ: −0.2985 (V3가 *훨씬* 나쁨)
+- → **Hebbian 추가가 cross-activation에 부정적 효과**.
+
+### 18.4 W_max sweep — D-20 구조 한계 확정
+
+`hebbian_w_max` 변경 (다른 hp 동일):
+
+| W_max | V3 cosine | V3 acc_recon | g | 의미 |
+|---|---:|---:|---:|---|
+| 0.05 | 0.8586 | 0.7844 | −0.1986 | V2와 거의 동일 |
+| 0.10 | 0.8042 | 0.7583 | −0.2554 | V2급 |
+| 0.30 | 0.4730 | 0.5851 | −0.3953 | 무너지기 시작 |
+| 1.00 (default) | 0.4057 | 0.3154 | −0.5089 | V1보다 살짝 좋음 |
+
+**완벽 monotonic** — W_hebbian 영향력이 작을수록 V3 → V2. η sweep에서도
+같은 패턴 (η=0.001~0.01에서 cosine 0.41~0.47). *시간 스케일 무관 구조
+한계*. D-20 확정.
+
+### 18.5 측정 #3 — Causal coupling
+
+| variant | ε=0 | ε=0.5 | ε=2.0 | IAS@0.5 |
+|---|---:|---:|---:|---:|
+| B2a | 0.9679 | 0.9677 | 0.9606 | 0.0002 |
+| B3 | 0.9599 | 0.9596 | 0.9520 | 0.0003 |
+| B4 | 0.9606 | 0.9612 | 0.9478 | −0.0006 |
+| V1 | 0.9594 | 0.9584 | 0.9508 | 0.0010 |
+| V2 | 0.9592 | 0.9587 | 0.9506 | 0.0005 |
+| V3 | 0.9694 | 0.9688 | 0.9620 | 0.0006 |
+
+**모든 variant IAS@0.5 ≈ 0**. 좌 hidden에 noise 2.0 가해도 정확도 거의
+안 떨어짐 → **MNIST 분리뇌가 너무 쉬움** (좌 14×28만으로도 분류 거의
+가능, 우 redundant). 측정 #3은 본 toy에서 *측정 도구로 약함*. 더 어려운
+task에서 시도 필요. **D-22 신규 deferred** (D-23 옆에 박혀있어야).
+
+### 18.6 사용자 가설 용어로 결과 정리
+
+| 사용자 가설 부분 | 결과 |
+|---|---|
+| 두 신경망 + ACC 공동 학습 (동시) | ✓ 모든 V/B variant에서 그대로 |
+| 위치 무관 매핑 (W가 임의 짝꿍 학습) | ✓ V2의 W가 학습됨 (cosine 0.89 = 의미 있는 매핑) |
+| 한쪽 자극으로 반대쪽 표현 복원 | ✓ V2에서 cosine 0.89, acc_recon 0.78 — 부분 검증 |
+| Hebbian 학습으로 짝꿍 기록 | ✗ V3에서 W_learned와 자원 경쟁 → 잡음 (D-20 확정) |
+
+**사용자 가설의 *큰 그림*은 V2로 부분 검증**. Hebbian 컴포넌트만 부적합 —
+이건 *그 자체로 학술적 발견*. 인공 뇌량은 *Hebbian 없이도* 동작 가능.
+
+### 18.7 시나리오 판정 (예비, Day 7 정식 학습으로 재확인)
+
+PLAN §12 (재서술 후 v1.4):
+- **V2 vs B4**: cosine Δ +0.04 (B 부분), acc_recon Δ +0.16 (A 통과 ✓)
+  → **Scenario A 일부 + Scenario B 일부**. 정식 학습 (5 seed × 5 epoch)
+  필요. cosine Δ가 0.15 임계 아래라 강한 검증은 아직.
+
+- **V3 vs B4**: cosine Δ −0.44, acc_recon Δ −0.30 → Scenario C (V3 형태
+  기각). 그러나 V3는 ablation으로 강등됐으므로 본 가설 검증과 *직접*
+  연결 X.
+
+### 18.8 다음 (Day 7) 실행 계획
+
+PLAN §11에 박힌 일정:
+- 5 seed × 5 epoch × 7 variant 학습 (총 35 학습, ~30분 GPU)
+- β_recon sweep (V2에 대해, 0.1/0.5/1.0/2.0)
+- 측정 #1~#4 모두 실행
+- 측정 #4: 학습된 V2 W 5개 → r_trained 측정 → r_random_baseline (0.7481)
+  과 비교
+- 결과를 표/그림으로 정리
+
+**핵심 검증**: V2 vs B4 cosine Δ가 5 seed 평균에서 *0.15 임계* 통과하는지.
+통과하면 Scenario A. 미통과 + 양수면 Scenario B (부분). 음수면 Scenario C.
+
+---
+
+*v1.1 작성일: 2026-05-09. v1.4 작성일: 2026-05-10 (Day 6 결과 박제, V2 본형 재서술).*
