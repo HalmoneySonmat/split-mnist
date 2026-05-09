@@ -1,0 +1,25 @@
+[project]
+name = "split-mnist"
+version = "0.0.1"
+description = "Split-brain MNIST + artificial corpus callosum PoC"
+requires-python = ">=3.10,<3.13"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+# Lint at 3.10 syntax level (most conservative); runtime supports 3.10–3.12.
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

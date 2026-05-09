@@ -164,19 +164,35 @@ Cosine, NLI 기반은 D-9 deferred.
 
 ```python
 W = W_hebbian + tanh(g) * W_learned
-# W_hebbian: not learnable, Hebbian rule로만 update
-# W_learned: nn.Parameter, backprop으로 학습
-# g: nn.Parameter(torch.zeros(())), 학습 가능
+# W_hebbian: not learnable, Hebbian rule로만 update.
+# W_learned: nn.Parameter, backprop으로 학습. 0.01·N(0,1) 로 random init.
+# g:         nn.Parameter(torch.zeros(())), 학습 가능. 0 init.
 ```
 
-학습 초기에 tanh(0)=0 → 재구성 부분 영향 0 → Hebbian만으로 시작 →
-점진적으로 재구성 부분 도입. Flamingo 게이트 패턴.
+학습 초기에 tanh(0)=0 → 재구성 부분 영향 0 (Flamingo "no perturbation
+at start" 보존) → Hebbian만으로 시작 → 점진적으로 재구성 부분 도입.
+
+**W_learned가 0이 아닌 작은 random인 이유** — chicken-and-egg 깨기:
+
+```
+∂L/∂W_learned = ∂L/∂W · tanh(g)        # g=0 → 0 (영원히)
+∂L/∂g         = ∂L/∂W · sech²(g) · W_l  # W_l=0 이면 → 0 (영원히)
+```
+
+W_learned도 0으로 두면 *둘 다 grad가 수학적으로 정확히 0*. AdamW의
+epsilon이나 numerical noise로도 못 깸 (1차 모멘트가 0). 실험적으로
+Day 4c 1 epoch에서 g=0.000000 그대로, recon loss 0.05 → 15108로 폭발
+확인됨.
+
+W_learned에 작은 random을 두면 `∂L/∂g = ∂L/∂W · 1 · W_learned ≠ 0` 이
+되어 g가 grad 받기 시작 → tanh(g) > 0 → W_learned도 grad 받음 →
+대칭성 깨짐.
 
 ### 4.5 §4 결정사항 박제
 
 | # | 항목 | 결정 |
 |---|---|---|
-| (1) | W 초기화 | **모두 0** (W_hebbian, W_learned, g) |
+| (1) | W 초기화 | **W_hebbian = 0, g = 0, W_learned = 0.01·N(0,1)** (D-19 회피, §16.5 참조) |
 | (2) | Hebbian 수식 | **(b) mean-centered, batch별 평균** |
 | (3) | 재구성 loss | **MSE 양방향 합** |
 | (4) | V3 게이트 | **`W = W_hebbian + tanh(g)·W_learned`, g=0 초기화** |
@@ -520,6 +536,34 @@ PoC에서는 안 하지만 *후속 실험에서 가치 있는* 항목들. 본 Po
 - **D-17 B4 multi-head** (8-head, dim 8 each) — capacity 더 큰 비교군.
 - **D-18 B5 — Frozen pretrained CNN 베이스라인** — SPLIT-9 패턴 직접 재현.
   PoC 후 SPLIT-9 reboot 단계에서 자연스럽게 추가.
+
+### 16.5 발견된 이슈 (학습 시점 검증 완료)
+
+- **D-19 V3 chicken-and-egg 대칭성** — *발현 확정 + 수정 적용 (2026-05-10)*
+
+  PLAN §4.5 (1) 원안에서 W_h, W_l, g 모두 0 초기화했음. 이 상태에선
+  `g=0 → tanh(0)=0 → W_l grad path 무력`, 동시에
+  `W_l=0 → g grad = sech²(g)·(∂L/∂W·W_l) = 0`. 둘 다 grad가 *수학적으로
+  정확히 0*. AdamW의 epsilon으로도 못 깸 (1차 모멘트가 0).
+
+  **Day 4c 검증 결과 (V3 1 epoch on MNIST)**:
+  - val_acc 95.41% (B4와 동일) — 분류 path는 정상 학습
+  - **final g = 0.000000** (영원히 0)
+  - **loss_recon: 0.05 → 15108** (폭발)
+    - 이유: W_hebbian이 *분류와 무관하게* Hebbian으로만 자라며 임의의
+      매핑에 수렴 → ĥ_R 폭발 → MSE 폭발. W_learned가 죽어 있어 보정
+      불가능.
+
+  **수정 적용**: `W_learned = 0.01 · N(0, 1)` 로 random init.
+  - `tanh(0) · W_learned = 0` 이라 학습 시작 시점 영향 0 (Flamingo 게이트
+    패턴 유지)
+  - 그러나 `∂L/∂g = ∂L/∂W · sech²(0) · W_learned ≠ 0` → g가 grad 받음
+    → 대칭성 깨짐
+  - 코드 변경: `acc.py` ACCv3Combined.__init__의 W_learned 초기화 한 줄.
+    PLAN §4.4 / §4.5 (1) 갱신.
+
+  **사후 검증 일정**: Day 4c 재실행에서 g가 0에서 벗어나는지, recon
+  loss가 정상 감소하는지 확인.
 
 ---
 
