@@ -3,12 +3,19 @@
 > SPLIT-9의 negative result를 받아, **공동 학습 + 인공 뇌량(ACC)**이라는
 > 다음 가설을 가장 작은 toy로 검증하는 프로젝트.
 
-**버전**: v1.2 (Day 4c 검증 완료, D-19 fix 반영)
-**상태**: PoC 인프라 검증 완료. Day 5 (B2 추가 + 베이스라인 일괄) 진입 가능.
+**버전**: v1.3 (Day 6 evaluate.py 완료, 측정 #4 random-baseline 재교정)
+**상태**: PoC 측정 인프라 완료. Day 7 (5 seed 정식 학습 + 본 가설 검증) 진입 가능.
 
 **박제 git tag**:
 - `v0.0-plan` — PLAN v1.1 시점 (코드 작성 직전)
 - `v0.1-day4c` — Day 1~4c 인프라 검증 완료 시점
+
+**v1.2 → v1.3 변경 요약**
+- §5.4 측정 #4: random init baseline 비교 형태로 재정의.
+- §12.A 측정 #4 임계치: `r ≤ 0.3 / r > 0.7` (절대 임계) → `r_trained vs r_random_baseline ± 0.15` (상대 임계).
+- §12.B 측정 #4 partial 임계치 동기화.
+- §12.C 측정 #4 근거 갱신 (random matrix theory).
+- §16.5 D-21 신규: *측정 #4 임계치 random baseline 재교정 발현 + 수정 (2026-05-10)*.
 
 **v1.1 → v1.2 변경 요약**
 - §4.4 V3 게이트: W_learned random init의 chicken-and-egg 회피 메커니즘 명시.
@@ -241,9 +248,15 @@ Resampling은 D-13 deferred.
 
 ### 5.4 측정 #4 — Position invariance
 
-**비교 방식**: 5 seed의 학습 후 W들.
+**비교 방식**: 5 seed의 학습 후 W들 vs *random init baseline*.
 - (i) Heatmap 5장 시각 비교 (figure)
 - (ii) Procrustes alignment 후 상관계수 r (정량)
+- (iii) **Random init baseline**: 5 seed의 *학습 안 한* random W의 r 계산.
+  학습된 r과 비교.
+
+**Day 6 발견 (2026-05-10)**: random isotropic 64×64 matrix의 Procrustes
+정렬 후 상관 r ≈ 0.74 (D-21 참조). 즉 *어떤 random*도 중간 수준 정렬
+가능 — 절대 임계치는 의미 없음. **반드시 random baseline 대비 비교**.
 
 RSA 분석은 D-14 deferred.
 
@@ -254,7 +267,7 @@ RSA 분석은 D-14 deferred.
 | #2 cosine | ≥ 0.7 (강), 0.3~0.7 (약), <0.3 (실패) | hyperalignment 표준 |
 | #2 V3 vs B4 cosine 차이 | ≥ 0.15, paired bootstrap p < 0.05 | SBERT 의미 거리 임계 0.2보다 보수 |
 | #3 V3 vs B3 ε=0.5 acc 하락 차이 | ≥ 5%p | SPLIT-9 IAS 보고 패턴 |
-| #4 Procrustes r | ≤ 0.3 (위치 무관 OK), > 0.7 (수렴 발견) | 일반 약/강 상관 임계 |
+| #4 Procrustes r | r_trained vs r_random_baseline (∼0.74) 차이로 판정 | random matrix theory (D-21) |
 
 ### 5.6 통계 처리 (모든 측정 공통)
 
@@ -426,7 +439,7 @@ split_mnist/
 | #2 V3 vs B4 cosine 차이 | ≥ 0.15, paired bootstrap p < 0.05 |
 | #2 V3 vs B4 classifier acc 차이 | ≥ 5%p |
 | #3 Causal coupling | V3 ε=0.5 acc 하락 − B3 acc 하락 ≥ 5%p |
-| #4 Position invariance | Procrustes r ≤ 0.3 across 5 seeds |
+| #4 Position invariance | r_trained ≤ r_random_baseline − 0.15, paired bootstrap p < 0.05 |
 
 → **다음 단계**: SPLIT-9 reboot (9×9 바둑 + LLM에 ACC 적용). 워크숍 short paper.
 
@@ -435,7 +448,7 @@ split_mnist/
 | 패턴 | 의미 |
 |---|---|
 | #2 V3 cosine ≥ 0.5 BUT V3 vs B4 차이 < 0.15 | "ACC 동작은 하나 Hebbian이 cross-attn 대비 우월하지 않음" |
-| #4 Procrustes r ∈ [0.3, 0.7] | "어느 정도 위치 수렴 — 완전 위치 무관 아님" |
+| #4 r_trained ∈ [random_baseline − 0.15, random_baseline + 0.15] | "학습이 random과 통계적으로 구별 안 됨 — 위치 무관 약함" |
 | #2 만족이지만 #3 만족 안 함 | "표현 복원은 되나 인과 결합 약함" |
 | V1/V2/V3 중 한두 변형만 통과 | 부분 검증 |
 
@@ -460,7 +473,7 @@ split_mnist/
 | V3 vs B4 차이 ≥ 0.15 | SBERT 의미 거리에서 "의미 다름"의 통상 임계 0.2보다 보수 |
 | #1 V3 ≥ B1 − 5%p | 분리뇌에서 단편 정보로 5%p 손실은 받아들일 수준 |
 | #3 ε=0.5 5%p 차이 | SPLIT-9 IAS 보고 패턴 |
-| #4 r ≤ 0.3 / ≥ 0.7 | 약/강 상관의 일반 임계 |
+| #4 r_trained vs random baseline (Δ ≥ 0.15) | random matrix theory + D-21 발견 |
 | paired bootstrap p < 0.05 | 표준 |
 
 세 시나리오 모두 *발표 가능한 결과*. 즉 무엇이 나와도 살아남는다.
@@ -545,6 +558,40 @@ PoC에서는 안 하지만 *후속 실험에서 가치 있는* 항목들. 본 Po
 - **D-17 B4 multi-head** (8-head, dim 8 each) — capacity 더 큰 비교군.
 - **D-18 B5 — Frozen pretrained CNN 베이스라인** — SPLIT-9 패턴 직접 재현.
   PoC 후 SPLIT-9 reboot 단계에서 자연스럽게 추가.
+- **D-21 측정 #4 임계치 random baseline 재교정** — *발현 확정 + 수정 적용 (2026-05-10, Day 6)*
+
+  Day 6 evaluate.py 단위 테스트에서 발견: 5개의 *학습 안 한* random
+  isotropic 64×64 행렬의 Procrustes 정렬 후 상관계수 r ≈ 0.74.
+
+  ```
+  >>> torch.manual_seed(123)
+  >>> W_list = [torch.randn(64, 64) for _ in range(5)]
+  >>> measure_position_invariance(W_list)
+  {'procrustes_corr_mean': 0.7431, 'procrustes_corr_per_seed': [0.7389, 0.7392, 0.7447, 0.7496], 'n_seeds': 5}
+  ```
+
+  **수학적 이유**: Procrustes는 orthogonal rotation만 허용하지만, 큰
+  차원(64×64)의 isotropic random matrix들은 적절한 회전으로 *상당히*
+  정렬됨. 이건 random matrix theory의 알려진 현상.
+
+  **PLAN 영향**: §5.5 / §12.A 의 측정 #4 임계치 (원안 r ≤ 0.3 위치 무관
+  OK / r > 0.7 수렴 발견)가 *부적절*. random baseline(0.74)이 이미
+  "수렴 발견" 임계 위. 학습된 W도 random과 비슷한 r 가질 가능성 큼.
+
+  **수정 (사전 등록 위배 아님 — 결과 보기 전 발견)**:
+  - 절대 임계치 폐기.
+  - 새 임계치: *5 seed × random init*의 r 분포를 측정해 `r_random_baseline`
+    추정 → 학습된 W의 r과 비교.
+    - r_trained ≤ r_random_baseline − 0.15 (paired bootstrap p < 0.05)
+      → 위치 무관 OK (학습이 *seed별 다른 패턴* 발견)
+    - r_trained ≈ r_random_baseline (Δ < 0.15)
+      → 학습이 random과 구별 안 됨 — 위치 무관 약함
+    - r_trained ≥ r_random_baseline + 0.15
+      → 수렴 발견 (학습이 *seed-invariant 구조*에 수렴)
+
+  **Day 7 추가 학습 단계**: 5 seed × random init W의 measure_position_invariance
+  를 학습 *전*에 한 번 실행해 baseline 박제. 그 후 학습된 W 측정.
+
 - **D-20 V3 Hebbian-recon 충돌 완화** — Day 5 train_baselines 결과에서
   V2 recon loss 21, V3 recon loss 14,644 (700배 차이) 발견. W_hebbian이
   매 step *임의 매핑*에 누적 → W_learned가 보정 따라잡지 못함. 후속:
