@@ -422,6 +422,11 @@ def train_one_run(cfg: TrainConfig, _data_loaders: tuple | None = None) -> dict:
                               For B2a, can be passed to `evaluate_left_only`
                               to obtain B2(b) accuracy without retraining.
             "variant":        the cfg.variant string, for downstream use.
+            "W_final":        final ACC/adapter W as a CPU tensor (or None).
+                              For V1/V2/V3: model["acc"].W (effective W).
+                              For B4:       model["adapter"].W.
+                              For B1/B2a/B3: None.
+                              Used by Day 7's measure_position_invariance.
     """
     set_seed(cfg.seed)
     device = _device_of(cfg)
@@ -499,6 +504,14 @@ def train_one_run(cfg: TrainConfig, _data_loaders: tuple | None = None) -> dict:
             print(f"Early stop at epoch {epoch}.")
             break
 
+    # Extract the W matrix for #4 (position invariance) downstream.
+    if "acc" in model:
+        W_final = model["acc"].W.detach().cpu().clone()
+    elif "adapter" in model:
+        W_final = model["adapter"].W.detach().cpu().clone()
+    else:
+        W_final = None
+
     return {
         "val_acc_curve": val_acc_curve,
         "best_val_acc": best_val_acc,
@@ -506,4 +519,5 @@ def train_one_run(cfg: TrainConfig, _data_loaders: tuple | None = None) -> dict:
         "final_metrics": final_metrics,
         "model": model,
         "variant": cfg.variant,
+        "W_final": W_final,
     }

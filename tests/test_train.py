@@ -227,6 +227,28 @@ def test_train_one_run_returns_model() -> None:
     assert "classifier" in result["model"]
 
 
+@pytest.mark.parametrize("variant", ["V1", "V2", "V3", "B4"])
+def test_train_one_run_returns_W_final_for_acc_like_variants(variant: str) -> None:
+    """V1/V2/V3/B4 must expose W_final (used by Day 7 measure_position_invariance)."""
+    cfg = _smoke_cfg(variant)
+    loaders = _dummy_loaders(n=24, batch_size=8)
+    result = train_one_run(cfg, _data_loaders=loaders)
+    assert "W_final" in result
+    W = result["W_final"]
+    assert W is not None
+    assert W.shape == (64, 64)
+    assert W.device.type == "cpu"
+
+
+@pytest.mark.parametrize("variant", ["B1", "B2a", "B3"])
+def test_train_one_run_W_final_none_for_no_acc_variants(variant: str) -> None:
+    """Variants without ACC/adapter return W_final = None."""
+    cfg = _smoke_cfg(variant)
+    loaders = _dummy_loaders(n=24, batch_size=8)
+    result = train_one_run(cfg, _data_loaders=loaders)
+    assert result["W_final"] is None
+
+
 def test_evaluate_left_only_b2a() -> None:
     """B2(b) = B2(a) trained model, evaluated with left classifier head only."""
     cfg = _smoke_cfg("B2a")

@@ -3,12 +3,22 @@
 > SPLIT-9의 negative result를 받아, **공동 학습 + 인공 뇌량(ACC)**이라는
 > 다음 가설을 가장 작은 toy로 검증하는 프로젝트.
 
-**버전**: v1.4 (Day 6 첫 결과 — V2 부분 검증, V3 기각, 본 가설 본형 V2로 재서술)
-**상태**: PoC 측정 1차 완료. Day 7 (5 seed × 더 긴 epoch 정식 학습) 진입 가능.
+**버전**: v1.5 (**Day 7 정식 학습 완료 — Scenario A 강한 검증**)
+**상태**: **PoC 완결**. 사용자 가설(V2 형태) 5 seed × 5 epoch에서 통계적 유의 검증 (p<0.0001).
 
 **박제 git tag**:
 - `v0.0-plan` — PLAN v1.1 시점 (코드 작성 직전)
 - `v0.1-day4c` — Day 1~4c 인프라 검증 완료 시점
+- `v0.3-day7-scenarioA` — Day 7 정식 학습 + Scenario A 강한 검증 (예정)
+
+**v1.4 → v1.5 변경 요약 — Scenario A 강한 검증**
+
+> 5 seed × 5 epoch × 7 variant full sweep (총 35 학습, 19.5분 GPU).
+> V2 vs B4: cosine Δ=+0.16 (p=0.0000), acc_recon Δ=+0.11 (p=0.0000).
+> V2 r_trained=0.46 vs random 0.75 (Δ=−0.28, 위치 무관 OK). **Scenario A
+> 6개 임계 중 5개 통과** (측정 #3은 toy 한계로 약함, §18.5에서 인정됨).
+
+- §19 신규: Day 7 결과 박제 (TABLE A/B/C + paired bootstrap + 사용자 가설 매핑).
 
 **v1.3 → v1.4 변경 요약 — 본 가설의 *본형*이 V2로 변경**
 
@@ -1051,3 +1061,164 @@ PLAN §11에 박힌 일정:
 ---
 
 *v1.1 작성일: 2026-05-09. v1.4 작성일: 2026-05-10 (Day 6 결과 박제, V2 본형 재서술).*
+
+---
+
+## 19. Day 7 결과 박제 — Scenario A 강한 검증 (2026-05-10)
+
+> **사용자 가설 (V2 형태) 정식 검증 완료.** 5 seed × 5 epoch × 7 variant
+> full sweep. V2 vs B4: cosine Δ=+0.16 (p=0.0000), acc_recon Δ=+0.11
+> (p=0.0000). 위치 무관성 (V2 r=0.46 vs random 0.75) 확인. **PoC 완결**.
+
+### 19.1 실험 셋업
+
+- 변형: B1, B2a, B3, B4, V1, V2, V3 (총 7 variant + B2b 평가만)
+- Seed: 42, 43, 44, 45, 46 (5개)
+- Epochs: 5
+- 측정: #1 (task acc), #2 (cross-activation, right_ablation), #3 (causal coupling), #4 (position invariance)
+- 통계: paired bootstrap (n=10000) + 5 seed mean ± std
+- D-21 random baseline: r_random_baseline = **0.7481**
+- 총 학습 시간: 19.5분 (RTX 3070 Ti)
+
+### 19.2 측정 #1 — Task accuracy (5 seed mean ± std)
+
+| variant | val | test |
+|---|---:|---:|
+| B1 (통합) | 0.9859 ± 0.001 | **0.9872** ± 0.001 (천장) |
+| B2a | 0.9833 ± 0.002 | 0.9860 ± 0.002 |
+| B2b | — | 0.9521 ± 0.004 |
+| B3 (concat) | 0.9848 ± 0.001 | 0.9844 ± 0.001 |
+| B4 (cross-attn) | 0.9855 ± 0.001 | 0.9855 ± 0.001 |
+| V1 (Hebbian only) | 0.9850 ± 0.001 | 0.9850 ± 0.000 |
+| **V2 (재구성, 본형)** | 0.9850 ± 0.000 | **0.9853** ± 0.001 |
+| V3 (Hebbian+재구성) | 0.9849 ± 0.001 | 0.9856 ± 0.001 |
+
+**모든 variant가 천장(B1)에 거의 따라잡음** (Δ ≤ 0.2%p). V2가 B1 - 5%p 임계 통과.
+분류 자체에서는 ACC 디자인 차이가 안 보임 — 구별은 측정 #2에서.
+
+### 19.3 측정 #2 — Cross-activation faithfulness (★ 본 가설 검증)
+
+right_ablation, mean ablation, full test (10000장), 5 seed:
+
+| variant | cosine | acc_real | acc_ablated | acc_recon | Δ(rec−abl) |
+|---|---:|---:|---:|---:|---:|
+| B4 | 0.6534 ± 0.026 | 0.9855 | 0.7398 ± 0.040 | 0.7223 ± 0.039 | **−0.0176** |
+| V1 | 0.2731 ± 0.107 | 0.9850 | 0.7365 ± 0.056 | 0.4176 ± 0.080 | **−0.3189** |
+| **V2** ★ | **0.8140** ± 0.007 | 0.9853 | 0.7555 ± 0.029 | **0.8289** ± 0.043 | **+0.0734** |
+| V3 | 0.3029 ± 0.034 | 0.9854 | 0.7593 ± 0.037 | 0.6805 ± 0.052 | **−0.0788** |
+
+**핵심 발견**:
+- **V2가 *유일하게* `acc_recon > acc_ablated`** — ACC 복원본이 *실제로* 분류 도움
+- **B4 acc_recon 음수 (−0.018)** — joint 학습 cross-attn은 random보다 *못 복원*. SPLIT-9 negative 패턴의 본 toy 재현
+- V1 처참 (예상한 대로 Hebbian only는 매핑 못 학습)
+- V3 음수 (−0.079) — D-20 5 seed 재확정
+
+### 19.4 측정 #4 — Position invariance (5 seed)
+
+random baseline = 0.7481. Scenario A 임계 ≤ 0.5981.
+
+| variant | r_trained | Δ vs random | 판정 |
+|---|---:|---:|---|
+| **V2** | **0.4646** | **−0.2835** | ✓ A (위치 무관 강함) |
+| V1 | 0.4105 | −0.3376 | ✓ A |
+| V3 | 0.5600 | −0.1881 | ✓ A (살짝 통과) |
+| B4 | 0.4055 | −0.3426 | ✓ A |
+
+**V2 위치 무관성 강한 검증**: r_trained 0.46이 random baseline 0.75보다 0.28
+낮음 (임계 0.15의 *약 2배*). 5쌍이 *서로 다른 짝꿍 패턴* 학습 확인.
+
+흥미롭게 V3 r이 가장 높음 (0.56) — Hebbian이 *seed간 비슷한 통계*에 수렴 시도.
+이게 Hebbian 잡음의 정체.
+
+### 19.5 측정 #3 — Causal coupling (toy 한계 재확인)
+
+5 seed에서도 모든 variant IAS@0.5 ≈ 0. PLAN §18.5에서 인정한 toy 한계 (MNIST
+분리뇌가 너무 쉬움 — 좌만으로 분류 거의 가능)가 5 seed에서도 동일.
+
+→ 측정 #3은 본 toy에서 결정적 검증 도구 X. *D-22*: 다른 toy/task 필요.
+
+### 19.6 ★ Paired bootstrap — 통계적 결정타
+
+#### V2 vs B4 (★ central hypothesis test)
+
+```
+cosine     Δ = +0.1606 ± 0.0306   p = 0.0000   임계 ≥ 0.15  ✓
+acc_recon  Δ = +0.1066 ± 0.0303   p = 0.0000   임계 ≥ 0.05  ✓
+```
+
+**둘 다 Scenario A 임계 통과 + p = 0.0000**. 5 seed *모두* 일관되게 V2 우월.
+우연이 아님이 통계적 확정.
+
+#### V3 vs V2 (Hebbian 추가 효과)
+
+```
+cosine     Δ = −0.5111 ± 0.0325   p = 0.0000
+acc_recon  Δ = −0.1484 ± 0.0926   p = 0.0000
+```
+
+**Hebbian 추가가 V2에 −0.51 cosine 손해** (통계적 확정). D-20 (Hebbian-recon
+충돌)이 5 seed에서 *재확정*.
+
+### 19.7 시나리오 최종 판정 — Scenario A
+
+PLAN §12.A 6개 임계 중:
+
+| 측정 | 임계 | 결과 | 판정 |
+|---|---|---|---|
+| #1 V2 ≥ B1 − 5%p | 92.42% | 98.53% | ✓ |
+| #2 V2 cosine ≥ 0.7 | 0.7 | 0.814 | ✓ |
+| #2 V2 vs B4 cosine Δ ≥ 0.15 | 0.15 | +0.161 (p<0.0001) | ✓ |
+| #2 V2 vs B4 acc_recon Δ ≥ 5%p | 0.05 | +0.107 (p<0.0001) | ✓ |
+| #3 V2 ε=0.5 인과 결합 | 5%p | toy 한계 (≈0%) | ⚠ |
+| #4 V2 r ≤ random − 0.15 | ≤ 0.598 | 0.465 | ✓ |
+
+**5/6 통과**. 측정 #3만 toy 한계로 약함 (§18.5에서 사전 등록 후 인정).
+**Scenario A 강한 검증** 판정.
+
+### 19.8 사용자 가설 매핑 (최종)
+
+| 사용자 가설의 부분 | 결과 |
+|---|---|
+| 두 신경망 + ACC *공동 학습* (동시) | ✓ 모든 V/B variant에서 그대로 |
+| *위치 무관* 매핑 (W가 임의 짝꿍 학습) | ✓ V2 r=0.46 vs random 0.75 (Δ −0.28, 강함) |
+| 한쪽 자극으로 *반대쪽 표현 복원* | ✓ V2 cosine 0.81, acc_recon 0.83 (B4 +16%, +11%) |
+| V2 vs joint cross-attn (B4) | ✓ p<0.0001 둘 다 |
+| Hebbian으로 짝꿍 기록 | ✗ V3에서 V2 −0.51 손해. 본 가설에서 *불필요*. |
+
+**사용자 가설의 큰 그림 — 공동 학습 + 위치 무관 ACC + 분리된 학습 신호 —
+는 V2 형태로 강한 검증.** Hebbian 컴포넌트만 부적합. 이 자체로 학술적
+발견: 인공 뇌량은 Hebbian 없이 *분리된 재구성 loss + γ 정책*만으로 충분.
+
+### 19.9 부수 발견
+
+1. **B4 cross-attn이 acc_recon < acc_ablated (−0.018)** — joint 학습 어댑터가
+   random ablation보다 *못 복원*. SPLIT-9 negative 패턴의 본 toy 재현.
+
+2. **V3 g가 seed별 ±** (mean +0.19, std 0.99) — D-19 fix(W_learned random
+   init)가 정상 작동. seed에 따라 g가 음수 또는 양수로 자유 학습.
+
+3. **모든 variant 분류 정확도 98.5~98.9%** — 분류 자체에서 ACC 디자인 차이
+   안 보임. 측정 #2가 진짜 ACC 변별 도구.
+
+### 19.10 다음 단계 (PoC 후)
+
+PLAN §14 Scenario A 시 후속:
+
+1. **워크숍 short paper** — V2 검증 + Hebbian 부적합성 발견 + 측정 도구
+   세트(특히 acc_recon vs acc_ablated 비교) 정리.
+2. **SPLIT-9 reboot** — 9×9 바둑 + LLM에 V2 형태 ACC 적용. 결정자/해석자가
+   진짜로 *이질적*인 환경에서도 동작하는지.
+3. **D-22**: 측정 #3이 정보적인 더 어려운 toy/task 시도.
+4. **D-23**: V3' "Hebbian opt-in" (`W = tanh(α)·W_h + W_l`) 후속 ablation.
+   Hebbian이 *특정 조건*에서 도움 주는지 검증.
+
+### 19.11 결과 파일
+
+전체 raw data: `runs/sweep_results.json` (38KB).
+- 5 seed × 7 variant × 측정 #1, #2, #3 결과 dict
+- random baseline + position invariance per variant
+- config 메타데이터
+
+---
+
+*v1.5 작성일: 2026-05-10 (Day 7 결과 박제, Scenario A 강한 검증, PoC 완결).*
