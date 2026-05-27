@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPLIT-MNIST — co-developed twins + an artificial corpus callosum</title>
+<style>
+  :root{--bg:#0f1115;--fg:#e6e6e6;--mut:#9aa4b2;--acc:#7ee08f;--card:#171a21;--bd:#2a2f3a;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,Segoe UI,Roboto,"Noto Sans KR",sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:24px 18px 80px}
+  header{position:sticky;top:0;background:rgba(15,17,21,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--bd);z-index:10}
+  .bar{max-width:860px;margin:0 auto;padding:10px 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .bar .sp{flex:1}
+  .seg{display:inline-flex;border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+  .seg button{background:transparent;color:var(--mut);border:0;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+  .seg button.on{background:var(--acc);color:#0b0e14;font-weight:600}
+  h1{font-size:28px;margin:.2em 0 .1em}
+  .tag{color:var(--mut);font-style:italic;margin:0 0 8px}
+  h2{font-size:20px;margin:1.7em 0 .5em;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  h3{font-size:16px;margin:1.3em 0 .4em;color:var(--acc)}
+  p{margin:.6em 0}
+  a{color:var(--acc)}
+  table{border-collapse:collapse;width:100%;margin:.6em 0;font-size:13.5px}
+  th,td{border:1px solid var(--bd);padding:6px 9px;text-align:left}
+  th{background:var(--card)}
+  td.n,th.n{text-align:right}
+  code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  pre{background:#0b0e14;border:1px solid var(--bd);border-radius:8px;padding:12px;overflow:auto;font-size:13px;line-height:1.5}
+  .cap{color:var(--mut);font-size:13px;margin:.1em 0 1em}
+  .lineage{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin:1.4em 0;font-size:15px}
+  .lineage b{color:var(--acc)}
+  .mut{color:var(--mut)}
+  footer{margin-top:40px;border-top:1px solid var(--bd);padding-top:14px;color:var(--mut);font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <span class="mut" style="font-weight:700;color:var(--fg)">SPLIT-MNIST</span>
+    <span class="sp"></span>
+    <span class="seg" id="langseg">
+      <button data-lang="ko">한국어</button><button data-lang="en">English</button>
+    </span>
+  </div>
+</header>
+
+<div class="wrap">
+  <h1 data-i18n="title"></h1>
+  <p class="tag" data-i18n="tagline"></p>
+
+  <section id="formal">
+    <h2 data-i18n="h_why"></h2>
+    <div data-i18n="whyHtml"></div>
+
+    <h2 data-i18n="h_arch"></h2>
+    <pre>SPLIT-MNIST
+├── MNIST 28×28
+│       ├─ left  14×28 → left CNN ────┐
+│       └─ right 14×28 → right CNN ───┤
+│       ┌── ACC ─────────────────────┤   ← decoupled signal:
+│       │   W ∈ ℝ^(64×64)            │     classification loss never
+│       │   ĥ_R = h_L · Wᵀ           │     touches W; ACC has its own loss
+│       │   ĥ_L = h_R · W            │
+│       └── variant V1 / V2 / V3 ────┘
+│       cat[h_L, h_R] → classifier ───┘ → 0–9 (γ policy)</pre>
+    <div data-i18n="archHtml"></div>
+
+    <h2 data-i18n="h_measure"></h2>
+
+    <h3 data-i18n="h_m1"></h3>
+    <div data-i18n="m1Html"></div>
+
+    <h3 data-i18n="h_m2"></h3>
+    <div data-i18n="m2Html"></div>
+    <table>
+      <tr><th>variant</th><th class="n">cosine</th><th class="n">acc_real</th><th class="n">acc_ablated</th><th class="n">acc_recon</th><th class="n">Δ(rec−abl)</th></tr>
+      <tr><td><b>V2</b> ★</td><td class="n"><b>0.814 ±.007</b></td><td class="n">0.985</td><td class="n">0.756 ±.029</td><td class="n"><b>0.829 ±.043</b></td><td class="n"><b>+0.073</b></td></tr>
+      <tr><td>B4</td><td class="n">0.653 ±.026</td><td class="n">0.986</td><td class="n">0.740 ±.040</td><td class="n">0.722 ±.039</td><td class="n">−0.018</td></tr>
+      <tr><td>V3</td><td class="n">0.303 ±.034</td><td class="n">0.985</td><td class="n">0.759 ±.037</td><td class="n">0.681 ±.052</td><td class="n">−0.079</td></tr>
+      <tr><td>V1</td><td class="n">0.273 ±.107</td><td class="n">0.985</td><td class="n">0.737 ±.056</td><td class="n">0.418 ±.080</td><td class="n">−0.319</td></tr>
+    </table>
+    <div class="cap" data-i18n="m2cap"></div>
+
+    <h3 data-i18n="h_m3"></h3>
+    <div data-i18n="m3Html"></div>
+
+    <h3 data-i18n="h_m4"></h3>
+    <div data-i18n="m4Html"></div>
+    <table>
+      <tr><th>variant</th><th class="n">r_trained</th><th class="n">Δ vs random (0.748)</th><th data-i18n="t_verdict"></th></tr>
+      <tr><td><b>V2</b></td><td class="n"><b>0.4646</b></td><td class="n"><b>−0.2835</b></td><td>✓ A</td></tr>
+      <tr><td>V1</td><td class="n">0.4105</td><td class="n">−0.3376</td><td>✓ A</td></tr>
+      <tr><td>V3</td><td class="n">0.5600</td><td class="n">−0.1881</td><td data-i18n="v_v3"></td></tr>
+      <tr><td>B4</td><td class="n">0.4055</td><td class="n">−0.3426</td><td>✓ A</td></tr>
+    </table>
+
+    <h3 data-i18n="h_boot"></h3>
+    <pre>V2 vs B4  (★ central hypothesis):
+  cosine     Δ = +0.1606 ± 0.0306   p = 0.0000   threshold ≥ 0.15  ✓
+  acc_recon  Δ = +0.1066 ± 0.0303   p = 0.0000   threshold ≥ 0.05  ✓
+V3 vs V2  (Hebbian add-on):
+  cosine     Δ = −0.5111 ± 0.0325   p = 0.0000   ← Hebbian = noise
+  acc_recon  Δ = −0.1484 ± 0.0926   p = 0.0000</pre>
+
+    <h2 data-i18n="h_verdict"></h2>
+    <div data-i18n="verdictHtml"></div>
+    <table>
+      <tr><th data-i18n="t_metric"></th><th data-i18n="t_thresh"></th><th data-i18n="t_result"></th><th data-i18n="t_pass"></th></tr>
+      <tr><td>#1 V2 ≥ B1 − 5pp</td><td>92.4%</td><td>98.5%</td><td>✓</td></tr>
+      <tr><td>#2 V2 cosine ≥ 0.7</td><td>0.7</td><td>0.81</td><td>✓</td></tr>
+      <tr><td>#2 V2 vs B4 cosine Δ ≥ 0.15</td><td>0.15</td><td>+0.16 (p&lt;.0001)</td><td>✓</td></tr>
+      <tr><td>#2 V2 vs B4 acc_recon Δ ≥ 5pp</td><td>0.05</td><td>+0.11 (p&lt;.0001)</td><td>✓</td></tr>
+      <tr><td>#3 V2 causal coupling</td><td>5pp</td><td data-i18n="v_toy"></td><td>⚠</td></tr>
+      <tr><td>#4 V2 r ≤ random − 0.15</td><td>≤ 0.60</td><td>0.46</td><td>✓</td></tr>
+    </table>
+    <div class="cap" data-i18n="verdictCap"></div>
+
+    <h2 data-i18n="h_meaning"></h2>
+    <div data-i18n="meaningHtml"></div>
+
+    <h2 data-i18n="h_limits"></h2>
+    <div data-i18n="limitsHtml"></div>
+
+    <h2 data-i18n="h_future"></h2>
+    <div data-i18n="futureHtml"></div>
+
+    <h2 data-i18n="h_repro"></h2>
+    <pre>python -m venv .venv && source .venv/bin/activate
+pip install -e .
+pytest tests/ -v            # 156 tests
+python scripts/run_full_sweep.py   # 5 seed × 5 epoch × 7 variant (~20 min)
+# → runs/sweep_results.json + 4 tables + paired bootstrap</pre>
+
+    <h2 data-i18n="h_stack"></h2>
+    <p class="mut">Python 3.10–3.12 · PyTorch 2.3+ · NumPy · SciPy · pytest · single 8 GB GPU · CUDA 12.1.</p>
+
+    <h2 data-i18n="h_refs"></h2>
+    <p class="mut" style="font-size:13px">
+      Alayrac et al., <i>Flamingo</i>, NeurIPS 2022 · Haxby et al., <i>Hyperalignment</i>, eLife 2020 ·
+      Lambon Ralph et al., <i>Left vs Right Anterior Temporal Lobes in Semantic Memory</i>, Cereb. Cortex 2018 ·
+      Koganemaru et al., <i>interhemispheric paired associative stimulation</i> ·
+      Innocenti &amp; Price, <i>Exuberance in the development of cortical networks</i>, Nat. Rev. Neurosci. 2005 ·
+      Gazzaniga, <i>The Bisected Brain</i> 1970; <i>The Consciousness Instinct</i> 2018 ·
+      Turpin et al., NeurIPS 2023 · Atanasova et al., ACL 2023 · Conmy et al., NeurIPS 2023 · (neighboring SPLIT-9).
+    </p>
+  </section>
+
+  <div class="lineage">
+    <span data-i18n="lineageLabel"></span><br>
+    <a href="https://github.com/HalmoneySonmat/split-9">SPLIT-9</a> → <b>SPLIT-MNIST</b> → <a href="https://github.com/HalmoneySonmat/split-maze">SPLIT-MAZE</a>
+  </div>
+
+  <footer>
+    <span data-i18n="closer"></span> ·
+    <a href="https://github.com/HalmoneySonmat/split-mnist">GitHub</a>
+  </footer>
+</div>
+
+<script>
+const T = {
+ko:{
+  title:"SPLIT-MNIST", tagline:"MNIST를 좌/우로 갈라 두 작은 CNN과 그 사이의 학습되는 인공 뇌량을 *동시에* 키웠을 때, 한쪽 자극만으로 반대쪽 표현을 복원할 수 있는지 검증한 PoC.",
+  h_why:"왜 만들었나",
+  whyHtml:`<p>Sperry·Gazzaniga 분리뇌: 우반구에만 "걸어가"를 보여주면 환자는 걷고, "왜?" 물으면 좌반구가 못 본 결정을 그럴듯하게 지어낸다(좌뇌 통역사 — 유창·일관·자주 틀림).</p><p>현대 AI는 이 구조를 의도적으로 반복(비언어 net + LLM 내레이터). 인접 프로젝트 <a href="https://github.com/HalmoneySonmat/split-9">SPLIT-9</a>가 9×9 바둑+LLM으로 이걸 풀려다 <b>음성</b>으로 끝났다: 사후 어댑터가 배운 95%는 도메인 prior, 보드별 신호는 5%, 좌표 0/10 — 구조적 천장.</p><p><b>가설:</b> 두 망을 <i>from scratch 동시</i> 학습하며 사이에 <i>위치 무관 coactivation 매핑(ACC)</i>을 두면, 한쪽 자극만으로 반대쪽 표현을 복원할 수 있다. 가장 작은 toy(분리 MNIST)에서 정량 검증.</p>`,
+  h_arch:"무엇을 만들었나",
+  archHtml:`<p>모두 <b>from scratch 공동 학습</b> — 시간·데이터는 같이, gradient 경로만 분리. <b>ACC 변형:</b> V1 Hebbian only(원초 직관) · <b>V2★ 재구성 only</b>(본 가설) · V3 Hebbian+재구성 · B4 joint cross-attention(사후 어댑터 baseline=SPLIT-9 패턴). + 베이스라인 B1(통합 CNN 천장)/B2/B3. <b>데이터:</b> MNIST 60k(50k+10k val)+10k test, 좌 0–13열 / 우 14–27열. <b>학습:</b> AdamW 1e-3, batch 128, 5 epoch, ~28초/run, 35 run = 19.5분.</p>`,
+  h_measure:"무엇을 측정했나",
+  h_m1:"1. Task accuracy (sanity)",
+  m1Html:`<p>5 epoch 후 모든 variant 98.5–98.9%로 천장(B1 98.72%)에 거의 따라잡음. <b>분류 자체로는 ACC 디자인 차이 안 보임</b> — 측정 #2가 변별 도구.</p>`,
+  h_m2:"2. Cross-activation faithfulness ★",
+  m2Html:`<p>우 hidden을 mean ablation → ACC가 좌 hidden만으로 우를 추정 → 진짜 우와 cosine + 추정본을 분류기에 넣어 정확도 비교.</p>`,
+  m2cap:`V2가 <i>유일하게</i> acc_recon &gt; acc_ablated(+0.073) — 복원본이 실제로 분류에 도움. B4는 Δ 음수(−0.018) = joint cross-attention이 random ablation보다도 못 복원 → SPLIT-9 음성 패턴을 본 toy에서 재현.`,
+  h_m3:"3. Causal coupling — toy 한계",
+  m3Html:`<p>좌 hidden에 가우시안 noise ε∈{0…2.0}. 모든 variant IAS@0.5≈0 — <b>MNIST 분리뇌가 너무 쉬움</b>(좌 14×28만으로 95%+ 분류 → 우가 redundant). 측정 #3은 본 toy에서 정보적이지 않음(D-22 deferred).</p>`,
+  h_m4:"4. Position invariance (D-21)",
+  m4Html:`<p>5 seed의 ACC W를 Procrustes 정렬해 평균 상관 r. 64×64 random matrix는 그 자체로 r≈0.75. 그보다 낮을수록 위치 무관.</p>`,
+  t_verdict:"판정", v_v3:"✓ A (살짝)", v_toy:"toy 한계", v_metric:"",
+  h_boot:"Paired bootstrap — 결정타",
+  h_verdict:"시나리오 판정 — Scenario A 강한 검증",
+  verdictHtml:`<p>PLAN §12 사전 등록 임계 6개:</p>`,
+  t_metric:"측정", t_thresh:"임계", t_result:"결과", t_pass:"통과",
+  verdictCap:`<b>5/6 통과.</b> 측정 #3만 toy 한계로 약함 — 결과 보기 <i>전</i>에 PLAN §18.5에서 사전 인정됨.`,
+  h_meaning:"이게 무슨 의미인가",
+  meaningHtml:`<p><b>두 망을 공동 학습하며 사이에 *학습되는 인공 뇌량*을 두면, 사후 어댑터(SPLIT-9 패턴)가 못 푼 cross-activation faithfulness를 풀 수 있다.</b> 본 PoC가 그 원리적 가능성을 가장 작은 toy에서 정량 입증.</p><p>핵심은 <b>학습 신호의 분리</b>(γ 정책): ACC가 분류 loss로부터 직접 backprop을 안 받고 자기 *재구성 loss*로 학습하면 진짜 매핑을 배운다. joint cross-attention(B4)은 분류 loss에 잡혀 *분류만 잘하는 매핑*을 배워 random보다 못 복원 — SPLIT-9 음성의 *원인*이 toy에서 확인됨.</p><p>또 <b>Hebbian은 ML 구현에서 부담</b>: V3에서 W_hebbian이 잡음으로 작용해 V2보다 cosine 0.51 손해. 신경과학적으로 충실한 직관이 ML에선 역효과 — <b>인공 뇌량은 Hebbian 없이 분리 재구성 loss + γ 정책만으로 충분.</b></p>`,
+  h_limits:"한계 (PoC 범위)",
+  limitsHtml:`<p>① MNIST는 두 modality가 동질적(둘 다 작은 CNN·이미지 절반) — 진짜 이질 환경(결정자+LLM)에선 다를 수 있음. ② task가 너무 쉬워 측정 #3 비정보적. ③ "해석" 자체는 미검증(수치 복원만). ④ 단방향만 — 양방향 뇌량(설명이 다음 결정에 영향)은 미검증.</p>`,
+  h_future:"향후 연구",
+  futureHtml:`<p>① <b>SPLIT-9 reboot</b> — Go-Net+LLM 사이에 공동학습 V2 ACC 적용, SPLIT-9 음성이 해소되는지. ② <b>양방향 뇌량</b>(설명이 다음 결정에 영향, 가설의 full form). ③ 더 어려운 task(측정 #3 정보화). ④ Hebbian opt-in. → 이 라인업의 다음 = <b>SPLIT-MAZE</b>(procgen 미로 + 인공 뇌량).</p>`,
+  h_repro:"재현", h_stack:"스택", h_refs:"참고문헌",
+  lineageLabel:"연구 라인업 — SPLIT-9의 음성이 이 PoC를 동기화했고, 이 양성이 다음 단계로 이어진다:",
+  closer:"이 프로젝트를 만드는 데 Claude를 사용했다."
+},
+en:{
+  title:"SPLIT-MNIST", tagline:"A PoC: when two small CNNs and a learnable artificial corpus callosum are co-trained from scratch, can stimulating one half recover the other half's representation?",
+  h_why:"Why this exists",
+  whyHtml:`<p>Sperry/Gazzaniga split-brain: show "walk" only to the right hemisphere and the patient walks; ask "why?" and the left hemisphere confabulates a plausible reason for a decision it never saw (the interpreter — fluent, coherent, often wrong).</p><p>Modern AI repeats this on purpose (non-language net + LLM narrator). The neighboring project <a href="https://github.com/HalmoneySonmat/split-9">SPLIT-9</a> tried it with 9×9 Go + LLM and ended <b>negative</b>: 95% of the adapter's gain is domain prior, only 5% per-board signal, 0/10 coordinates — a structural ceiling.</p><p><b>Hypothesis:</b> if two nets are co-trained <i>from scratch</i> with a learnable, <i>position-invariant coactivation mapping (ACC)</i> between them, stimulating one side suffices to recover the other's representation. Tested in the smallest toy: split MNIST.</p>`,
+  h_arch:"What we built",
+  archHtml:`<p>All <b>co-trained from scratch</b> — time & data shared, only gradient paths split. <b>ACC variants:</b> V1 Hebbian only · <b>V2★ reconstruction only</b> (the hypothesis) · V3 Hebbian+reconstruction · B4 joint cross-attention (post-hoc baseline = SPLIT-9 pattern). + baselines B1(single CNN, ceiling)/B2/B3. <b>Data:</b> MNIST 60k(50k+10k val)+10k test, columns 0–13 vs 14–27. <b>Training:</b> AdamW 1e-3, batch 128, 5 epochs, ~28s/run, 35 runs = 19.5 min.</p>`,
+  h_measure:"What we measured",
+  h_m1:"1. Task accuracy (sanity)",
+  m1Html:`<p>After 5 epochs every variant lands 98.5–98.9%, ~0.2pp off the ceiling (B1 98.72%). <b>The ACC design barely affects classification</b> — measurement #2 is what separates the variants.</p>`,
+  h_m2:"2. Cross-activation faithfulness ★",
+  m2Html:`<p>Mean-ablate the right hidden → ACC reconstructs it from the left → cosine vs the true right hidden + feed the reconstruction to the classifier and compare accuracy.</p>`,
+  m2cap:`V2 is the <i>only</i> variant with acc_recon &gt; acc_ablated (+0.073) — the reconstruction actually helps classification. B4's Δ is negative (−0.018) = joint cross-attention reconstructs worse than random ablation → SPLIT-9's negative reproduced in this toy.`,
+  h_m3:"3. Causal coupling — toy limit",
+  m3Html:`<p>Gaussian noise ε∈{0…2.0} on the left hidden. All variants IAS@0.5≈0 — <b>split-MNIST is too easy</b> (the left 14×28 alone classifies 95%+, so the right is redundant). Measurement #3 is uninformative in this toy (D-22 deferred).</p>`,
+  h_m4:"4. Position invariance (D-21)",
+  m4Html:`<p>Procrustes-align the 5 seeds' ACC W, take mean correlation r. A 64×64 random matrix gives r≈0.75 on its own; lower = more position-invariant.</p>`,
+  t_verdict:"verdict", v_v3:"✓ A (slightly)", v_toy:"toy limit", v_metric:"",
+  h_boot:"Paired bootstrap — the clincher",
+  h_verdict:"Verdict — Scenario A strong verification",
+  verdictHtml:`<p>The 6 pre-registered thresholds (PLAN §12):</p>`,
+  t_metric:"metric", t_thresh:"threshold", t_result:"result", t_pass:"pass",
+  verdictCap:`<b>5/6 pass.</b> Only #3 is weak, due to the toy limit — acknowledged <i>before</i> seeing results (PLAN §18.5).`,
+  h_meaning:"What this means",
+  meaningHtml:`<p><b>Co-training two nets with a *learnable* artificial corpus callosum between them solves the cross-activation faithfulness that the post-hoc adapter (SPLIT-9 pattern) could not.</b> This PoC shows the in-principle possibility, quantitatively, in the smallest toy.</p><p>The key is the <b>decoupled learning signal</b> (γ policy): when the ACC gets no direct backprop from the classification loss and trains on its own *reconstruction loss*, it learns the real mapping. Joint cross-attention (B4), captured by the classification loss, learns a *classify-well mapping* that reconstructs worse than random — the *cause* of SPLIT-9's negative, confirmed in the toy.</p><p>Also: <b>Hebbian is a liability in this ML implementation</b> — in V3 the Hebbian term acts as noise, costing 0.51 cosine vs V2. A neuroscience-faithful intuition backfires in ML — <b>the artificial callosum needs only the decoupled reconstruction loss + γ policy, no Hebbian.</b></p>`,
+  h_limits:"Limitations (PoC scope)",
+  limitsHtml:`<p>① MNIST's two modalities are homogeneous (both small CNNs / image halves) — a truly heterogeneous setting (decider + LLM) may behave differently. ② The task is too easy, so measurement #3 is uninformative. ③ "Interpretation" itself is unverified (numeric recovery only). ④ One-directional only — a bidirectional callosum (explanation feeding the next decision) is untested.</p>`,
+  h_future:"Future work",
+  futureHtml:`<p>① <b>SPLIT-9 reboot</b> — apply a co-trained V2 ACC between Go-Net and LLM; does SPLIT-9's negative dissolve? ② <b>Bidirectional callosum</b> (explanation influences the next decision — the full hypothesis). ③ A harder task (to make #3 informative). ④ Hebbian opt-in. → Next in the lineage = <b>SPLIT-MAZE</b> (procgen maze + artificial callosum).</p>`,
+  h_repro:"Reproducing", h_stack:"Stack", h_refs:"References",
+  lineageLabel:"Research lineage — SPLIT-9's negative motivated this PoC, and this positive leads to the next step:",
+  closer:"Claude was used to build this project."
+}
+};
+function apply(lang){
+  if(lang!=="ko"&&lang!=="en") lang="ko";
+  const d=T[lang]; document.documentElement.lang=lang;
+  document.querySelectorAll("[data-i18n]").forEach(el=>{
+    const k=el.getAttribute("data-i18n"); if(d[k]!==undefined) el.innerHTML=d[k];
+  });
+  document.querySelectorAll("#langseg button").forEach(b=>b.classList.toggle("on",b.dataset.lang===lang));
+  localStorage.setItem("splitmnist_lang",lang);
+}
+document.querySelectorAll("#langseg button").forEach(b=>b.onclick=()=>apply(b.dataset.lang));
+apply(localStorage.getItem("splitmnist_lang")||"ko");
+</script>
+</body>
+</html>
